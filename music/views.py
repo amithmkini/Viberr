@@ -77,7 +77,7 @@ def create_song(request, album_id):
 def delete_album(request, album_id):
     album = Album.objects.get(pk=album_id)
     album.delete()
-    albums = Album.objects.filter(user=request.user)
+    albums = Album.objects.all()
     return render(request, 'music/index.html', {'albums': albums})
 
 
@@ -112,6 +112,7 @@ def favorite(request, song_id):
 
 def counter(request, song_id):
     song = get_object_or_404(Song, pk=song_id)
+    encrypted_id = song.encrypted_id
     data_matrix = genfromtxt('music/matrix.csv',delimiter=",")
     f = open('music/dictionary_user.txt','r')
     username = request.user.username
@@ -125,9 +126,16 @@ def counter(request, song_id):
             break
     print(user_id)
     f.close()
-    # print(request.user.username)
-    # print(user_list)
-    data_matrix[int(user_id)][3] +=  1
+
+    f2 = open('music/dictionary_song.txt','r')
+    for line in f2:
+        data = line.split('\t')
+        if data[0] == encrypted_id:
+            song_id = data[1]
+            break
+
+    print(user_id,song_id)
+    data_matrix[int(user_id)][int(song_id)] +=  1
     np.savetxt("music/newmatrix.csv",data_matrix,delimiter=",")
     print(data_matrix[int(user_id)][3])
 
@@ -151,7 +159,7 @@ def index(request):
     if not request.user.is_authenticated():
         return render(request, 'music/login.html')
     else:
-        albums = Album.objects.filter(user=request.user)
+        albums = Album.objects.all()
         song_results = Song.objects.all()
         query = request.GET.get("q")
         if query:
@@ -187,8 +195,8 @@ def login_user(request):
         if user is not None:
             if user.is_active:
                 login(request, user)
-                albums = Album.objects.filter(user=request.user)
-                return render(request, 'music/index.html', {'albums': albums})
+                albums = Album.objects.all()
+                return render(request, 'music/recommended.html', {'albums': albums})
             else:
                 return render(request, 'music/login.html', {'error_message': 'Your account has been disabled'})
         else:
@@ -208,7 +216,7 @@ def register(request):
 
 
         data_matrix = genfromtxt('music/matrix.csv',delimiter=",")
-        f = open('music/dictionary_user_backup.txt','a')
+        f = open('music/dictionary_user.txt','a')
         m = hashlib.sha1(username.encode('utf-8')).hexdigest()
         print(m)
         new_row = [0] * data_matrix.shape[1]
@@ -222,7 +230,7 @@ def register(request):
         if user is not None:
             if user.is_active:
                 login(request, user)
-                albums = Album.objects.filter(user=request.user)
+                albums = Album.objects.all()
                 return render(request, 'music/index.html', {'albums': albums})
     context = {
         "form": form,
@@ -235,7 +243,7 @@ def songs(request, filter_by):
     else:
         try:
             song_ids = []
-            for album in Album.objects.filter(user=request.user):
+            for album in Album.objects.all():
                 for song in album.song_set.all():
                     song_ids.append(song.pk)
             users_songs = Song.objects.filter(pk__in=song_ids)
@@ -246,4 +254,113 @@ def songs(request, filter_by):
         return render(request, 'music/songs.html', {
             'song_list': users_songs,
             'filter_by': filter_by,
+        })
+
+# Recommender
+
+def similarity(u,v):
+    # print "Calculating sim between " + str(u) + " and " + str(v),
+    numerator = float(np.inner(u,v))
+    norm_u = np.linalg.norm(u)
+    norm_v = np.linalg.norm(v)
+    denominator = norm_u * norm_v
+    # print numerator, denominator
+    # print " = " + str(numerator/denominator)
+    return numerator/denominator
+
+def score(user_index,song_index,data):
+    u = data[user_index]
+    u_avg = np.mean(u)
+    numerator = 0
+    denominator = 0
+    # print 'similarity = '
+    for u1 in data:
+        u1_avg = np.mean(u1)
+        sim = similarity(u,u1)
+        # print sim,
+        numerator += sim * (u[song_index]-u1_avg)
+        denominator += abs(sim)
+    return u_avg + (numerator/denominator)
+
+def prediction(user_index,data,k=16):
+    score_list = []
+    print("Constructing score list...",)
+    for i in range(data.shape[1]):
+        s = score(user_index, i, data)
+        score_list.append((s, i))
+    score_list.sort()
+    print("Done")
+    recommendations = score_list[data.shape[1]-k:data.shape[1]]
+    rec_songs = [y for (x,y) in recommendations]
+    # print score_list
+    return rec_songs
+
+def normalizeMatrix(data_matrix):
+
+    num_rows = data_matrix.shape[0]
+    num__cols = data_matrix.shape[1]
+
+    data_matrix_normalized = [[0]*num__cols] * num_rows
+
+    #normalizing the data
+    for i in range(num_rows):
+        data_matrix_normalized[i] = data_matrix[i] / float(np.amax(data_matrix[i]))
+
+    return np.asarray(data_matrix_normalized)
+
+
+
+
+def recommended(request):
+
+    f = open('music/dictionary_user.txt','r')
+    username = request.user.username
+    print(username)
+    m = hashlib.sha1(username.encode('utf-8')).hexdigest()
+    print(m)
+    for line in f:
+        data = line.split('\t')
+        if data[0] == m:
+            user_id = data[1]
+            break
+    print(user_id)
+    f.close()
+
+    if not request.user.is_authenticated():
+        return render(request, 'music/login.html')
+    else:
+        try:
+            song_ids = []
+            # The recommended songs should come out here.
+            print('We reached here')
+            data = genfromtxt("music/matrix.csv",delimiter=",")
+            num_users = data.shape[0]
+            data_normal = normalizeMatrix(data)
+            u = user_id
+            final_list = prediction(u,data_normal)
+            print(final_list)
+            print(num_users)
+            print(data.shape[1])
+            encrypted_list = []
+            f = open('music/dictionary_song.txt','r')
+            for line in f:
+                data = line.split('\t')
+                for x in final_list:
+                    print(x,data[1])
+                    if x == int(data[1]):
+                        encrypted_list.append(data[0])
+
+            print(encrypted_list)
+            print(final_list)
+            for album in Album.objects.all():
+                for song in album.song_set.all():
+                    for x in encrypted_list:
+                        if x == song.encrypted_id:
+                            song_ids.append(song.pk)
+
+            users_songs = Song.objects.filter(pk__in=song_ids)
+        except Album.DoesNotExist:
+            users_songs = []
+        return render(request, 'music/recommended.html', {
+            'song_list': users_songs
         })

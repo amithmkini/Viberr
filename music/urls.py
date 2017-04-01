@@ -4,6 +4,7 @@ from . import views
 app_name = 'music'
 
 urlpatterns = [
+    url(r'^recommended/$', views.recommended, name='recommended'),
     url(r'^$', views.index, name='index'),
     url(r'^register/$', views.register, name='register'),
     url(r'^login_user/$', views.login_user, name='login_user'),
