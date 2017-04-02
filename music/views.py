@@ -136,7 +136,7 @@ def counter(request, song_id):
 
     print(user_id,song_id)
     data_matrix[int(user_id)][int(song_id)] +=  1
-    np.savetxt("music/newmatrix.csv",data_matrix,delimiter=",")
+    np.savetxt("music/matrix.csv",data_matrix,delimiter=",")
     print(data_matrix[int(user_id)][3])
 
     return render(request, 'music/success.html')
@@ -222,7 +222,8 @@ def register(request):
         new_row = [0] * data_matrix.shape[1]
         num_users = data_matrix.shape[0]
         data_matrix = np.vstack([data_matrix, new_row])
-        f.writelines(m+'\t'+str(num_users))
+        savetxt("music/matrix.csv",data_matrix,delimiter=",")
+        f.writelines(m+'\t'+str(num_users)+'\n')
         f.close()
         # print(request.user.username)
         # print(user_list)
@@ -293,6 +294,7 @@ def prediction(user_index,data,k=16):
     recommendations = score_list[data.shape[1]-k:data.shape[1]]
     rec_songs = [y for (x,y) in recommendations]
     # print score_list
+    print(rec_songs)
     return rec_songs
 
 def normalizeMatrix(data_matrix):
@@ -321,7 +323,7 @@ def recommended(request):
     for line in f:
         data = line.split('\t')
         if data[0] == m:
-            user_id = data[1]
+            user_id = int(data[1])
             break
     print(user_id)
     f.close()
@@ -339,19 +341,14 @@ def recommended(request):
             u = user_id
             final_list = prediction(u,data_normal)
             print(final_list)
-            print(num_users)
-            print(data.shape[1])
             encrypted_list = []
             f = open('music/dictionary_song.txt','r')
             for line in f:
                 data = line.split('\t')
                 for x in final_list:
-                    print(x,data[1])
                     if x == int(data[1]):
                         encrypted_list.append(data[0])
 
-            print(encrypted_list)
-            print(final_list)
             for album in Album.objects.all():
                 for song in album.song_set.all():
                     for x in encrypted_list:
