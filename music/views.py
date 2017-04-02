@@ -196,7 +196,7 @@ def login_user(request):
             if user.is_active:
                 login(request, user)
                 albums = Album.objects.all()
-                return render(request, 'music/recommended.html', {'albums': albums})
+                return render(request, 'music/index.html', {'albums': albums})
             else:
                 return render(request, 'music/login.html', {'error_message': 'Your account has been disabled'})
         else:
